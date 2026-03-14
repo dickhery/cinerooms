@@ -1,0 +1,200 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Fonts ──────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Playfair Display";
+  src: url("/assets/fonts/PlayfairDisplay-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("/assets/fonts/Fraunces-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Outfit";
+  src: url("/assets/fonts/Outfit-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/assets/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ─── Design Tokens ─────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    /* CineRooms dark cinema theme — always dark */
+    --radius: 0.375rem;
+
+    /* Core palette */
+    --background: 0.06 0 0;
+    --foreground: 0.95 0.01 90;
+    --card: 0.1 0 0;
+    --card-foreground: 0.93 0.01 90;
+    --popover: 0.12 0.005 280;
+    --popover-foreground: 0.95 0.01 90;
+
+    /* Cinematic red primary */
+    --primary: 0.52 0.22 25;
+    --primary-foreground: 1 0 0;
+
+    --secondary: 0.16 0.005 280;
+    --secondary-foreground: 0.9 0.01 90;
+
+    --muted: 0.14 0.003 280;
+    --muted-foreground: 0.6 0.015 90;
+
+    /* Red accent */
+    --accent: 0.55 0.22 25;
+    --accent-foreground: 1 0 0;
+
+    --destructive: 0.55 0.22 25;
+    --destructive-foreground: 1 0 0;
+
+    --border: 0.22 0.005 280;
+    --input: 0.18 0.005 280;
+    --ring: 0.52 0.22 25;
+
+    /* Cinematic red token */
+    --cinema-red: 0.52 0.22 25;
+    --cinema-red-dim: 0.42 0.18 25;
+    --cinema-red-bright: 0.62 0.24 25;
+    --cinema-gold: 0.78 0.12 78;
+
+    --chart-1: 0.52 0.22 25;
+    --chart-2: 0.6 0.118 184.704;
+    --chart-3: 0.398 0.07 227.392;
+    --chart-4: 0.828 0.189 84.429;
+    --chart-5: 0.769 0.188 70.08;
+
+    --sidebar: 0.1 0 0;
+    --sidebar-foreground: 0.93 0.01 90;
+    --sidebar-primary: 0.52 0.22 25;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.16 0.005 280;
+    --sidebar-accent-foreground: 0.9 0.01 90;
+    --sidebar-border: 0.22 0.005 280;
+    --sidebar-ring: 0.52 0.22 25;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Outfit", system-ui, sans-serif;
+  }
+}
+
+/* ─── Cinema Utilities ───────────────────────────────────────────────── */
+
+@layer utilities {
+  .font-display {
+    font-family: "Playfair Display", "Fraunces", serif;
+  }
+
+  .font-mono-code {
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .text-cinema-red {
+    color: oklch(var(--cinema-red));
+  }
+
+  .bg-cinema-red {
+    background-color: oklch(var(--cinema-red));
+  }
+
+  .border-cinema-red {
+    border-color: oklch(var(--cinema-red));
+  }
+
+  .shadow-cinema {
+    box-shadow:
+      0 0 30px oklch(var(--cinema-red) / 0.15),
+      0 4px 24px rgba(0, 0, 0, 0.6);
+  }
+
+  .shadow-card-hover {
+    box-shadow:
+      0 0 20px oklch(var(--cinema-red) / 0.25),
+      0 8px 32px rgba(0, 0, 0, 0.8);
+  }
+
+  .grain-overlay {
+    position: relative;
+  }
+
+  .grain-overlay::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .scrollbar-cinema::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scrollbar-cinema::-webkit-scrollbar-track {
+    background: oklch(var(--background));
+  }
+  .scrollbar-cinema::-webkit-scrollbar-thumb {
+    background: oklch(var(--cinema-red));
+    border-radius: 2px;
+  }
+}
+
+/* ─── Video player custom styles ─────────────────────────────────────── */
+video::-webkit-media-controls-panel {
+  background: linear-gradient(
+    0deg,
+    oklch(0.06 0 0 / 0.95) 0%,
+    transparent 100%
+  );
+}
+
+/* ─── Scrollbar global ───────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(0.06 0 0);
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.22 0.005 280);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--cinema-red));
+}
+
+/* ─── Selection ──────────────────────────────────────────────────────── */
+::selection {
+  background: oklch(var(--cinema-red) / 0.3);
+  color: oklch(0.95 0.01 90);
+}
