@@ -14,32 +14,31 @@ import {
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useGetRoomById } from "../hooks/useQueries";
+import { useGetRoomBySlug } from "../hooks/useQueries";
+import { isMobile } from "../utils/mobileDetect";
 import { registerRoomCleanup, runRoomCleanup } from "../utils/roomLifecycle";
 
 export function RoomPage() {
-  const { id } = useParams({ from: "/room/$id" });
+  const { slug } = useParams({ from: "/room/$slug" });
   const navigate = useNavigate();
   const embedContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // 5-second safety delay before video controls are enabled
-  const [videoReady, setVideoReady] = useState(false);
+  // 5-second safety delay before video controls are enabled (skipped on mobile)
+  const [videoReady, setVideoReady] = useState(isMobile);
   const [countdown, setCountdown] = useState(5);
 
-  const roomId = (() => {
-    try {
-      return BigInt(id);
-    } catch {
-      return null;
-    }
-  })();
-
-  const { data: room, isLoading } = useGetRoomById(roomId);
+  const { data: room, isLoading } = useGetRoomBySlug(slug);
 
   // 5-second cooldown on room load — reset whenever the room id changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: id intentionally triggers reset
+  // Skipped entirely on mobile to allow iOS Safari's user-gesture play chain to work
+  // biome-ignore lint/correctness/useExhaustiveDependencies: slug intentionally triggers reset
   useEffect(() => {
+    if (isMobile) {
+      setVideoReady(true);
+      return;
+    }
+
     setVideoReady(false);
     setCountdown(5);
 
@@ -56,7 +55,7 @@ export function RoomPage() {
       clearTimeout(timer);
       ticks.forEach(clearTimeout);
     };
-  }, [id]);
+  }, [slug]);
 
   // Register cleanup with lifecycle manager on mount
   useEffect(() => {
@@ -89,6 +88,8 @@ export function RoomPage() {
   // Aggressive fresh injection on EVERY room entry (including back-button bfcache restore)
   // This fixes the "works only the first time" bug by guaranteeing the paywall module re-runs.
   useEffect(() => {
+    // Desktop-only app — skip all embed script logic on mobile
+    if (isMobile) return;
     if (!room?.embedScript || !embedContainerRef.current) return;
 
     const container = embedContainerRef.current;
@@ -188,7 +189,7 @@ export function RoomPage() {
   };
 
   const handleShare = () => {
-    const shareUrl = `${window.location.origin}/room/${id}`;
+    const shareUrl = `${window.location.origin}/room/${room?.slug ?? slug}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       toast.success("Room link copied!");
     });
@@ -272,10 +273,12 @@ export function RoomPage() {
                   controlsList="nodownload"
                   onContextMenu={(e) => e.preventDefault()}
                   className="h-full w-full"
+                  playsInline
+                  preload="metadata"
                   style={{ background: "#000" }}
                 />
 
-                {/* 5-second loading overlay with live countdown */}
+                {/* 5-second loading overlay with live countdown — desktop only */}
                 {!videoReady && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 pointer-events-none select-none">
                     <Loader2

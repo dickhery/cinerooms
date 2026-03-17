@@ -89,12 +89,22 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface HomepageScript {
+    id: bigint;
+    scriptContent: string;
+    order: bigint;
+    name: string;
+}
 export type Time = bigint;
-export interface VideoSubmission {
+export interface _CaffeineStorageRefillInformation {
+    proposed_top_up_amount?: bigint;
+}
+export interface VideoSubmissionFull {
     id: bigint;
     viewDuration: string;
     status: string;
     title: string;
+    denialReason: string;
     thumbnailUrl: string;
     submitterPrincipal: Principal;
     createdAt: Time;
@@ -104,10 +114,10 @@ export interface VideoSubmission {
     category: string;
     price: string;
     videoUrl: string;
-    denialReason: string;
 }
-export interface _CaffeineStorageRefillInformation {
-    proposed_top_up_amount?: bigint;
+export interface _CaffeineStorageCreateCertificateResult {
+    method: string;
+    blob_hash: string;
 }
 export interface Room {
     id: bigint;
@@ -123,10 +133,6 @@ export interface Room {
     price: string;
     videoUrl: string;
 }
-export interface _CaffeineStorageCreateCertificateResult {
-    method: string;
-    blob_hash: string;
-}
 export interface UserProfile {
     name: string;
 }
@@ -139,12 +145,6 @@ export enum UserRole {
     user = "user",
     guest = "guest"
 }
-export interface HomepageScript {
-    id: bigint;
-    name: string;
-    scriptContent: string;
-    order: bigint;
-}
 export interface backendInterface {
     _caffeineStorageBlobIsLive(hash: Uint8Array): Promise<boolean>;
     _caffeineStorageBlobsToDelete(): Promise<Array<Uint8Array>>;
@@ -153,32 +153,33 @@ export interface backendInterface {
     _caffeineStorageRefillCashier(refillInformation: _CaffeineStorageRefillInformation | null): Promise<_CaffeineStorageRefillResult>;
     _caffeineStorageUpdateGatewayPrincipals(): Promise<void>;
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
+    addHomepageScript(name: string, scriptContent: string): Promise<HomepageScript>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     bootstrapAdminIfNeeded(): Promise<boolean>;
     claimHardcodedAdmin(): Promise<boolean>;
-    createRoom(title: string, slug: string, description: string, price: string, thumbnailUrl: string, videoUrl: string, embedScript: string, viewDuration: string, category: string, creatorName: string): Promise<Room>;
+    createRoom(title: string, _slug: string, description: string, price: string, thumbnailUrl: string, videoUrl: string, embedScript: string, viewDuration: string, category: string, creatorName: string): Promise<Room>;
     deleteRoom(id: bigint): Promise<boolean>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    getPendingSubmissions(): Promise<Array<VideoSubmission>>;
+    getHomepageScripts(): Promise<Array<HomepageScript>>;
+    getPendingSubmissions(): Promise<Array<VideoSubmissionFull>>;
     getRoomById(id: bigint): Promise<Room | null>;
     getRoomBySlug(slug: string): Promise<Room | null>;
     getRooms(): Promise<Array<Room>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
-    getUserSubmissions(): Promise<Array<VideoSubmission>>;
+    getUserSubmissions(): Promise<Array<VideoSubmissionFull>>;
     hasAdmin(): Promise<boolean>;
     isAdmin(): Promise<boolean>;
     isCallerAdmin(): Promise<boolean>;
-    resetAdmin(): Promise<void>;
-    reviewSubmission(id: bigint, approve: boolean, embedScript: string, denialReason: string): Promise<VideoSubmission>;
-    saveCallerUserProfile(profile: UserProfile): Promise<void>;
-    submitVideo(title: string, description: string, videoUrl: string, thumbnailUrl: string, paymentAddress: string, price: string, category: string, viewDuration: string, creatorName: string): Promise<VideoSubmission>;
-    updateRoom(id: bigint, title: string, slug: string, description: string, price: string, thumbnailUrl: string, videoUrl: string, embedScript: string, viewDuration: string, category: string, creatorName: string): Promise<Room>;
-    getHomepageScripts(): Promise<Array<HomepageScript>>;
-    addHomepageScript(name: string, scriptContent: string): Promise<HomepageScript>;
-    updateHomepageScript(id: bigint, name: string, scriptContent: string): Promise<HomepageScript>;
+    moveRoomToTop(id: bigint): Promise<boolean>;
     removeHomepageScript(id: bigint): Promise<boolean>;
     reorderHomepageScripts(ids: Array<bigint>): Promise<void>;
+    resetAdmin(): Promise<void>;
+    reviewSubmission(id: bigint, approve: boolean, embedScript: string, denialReason: string): Promise<VideoSubmissionFull>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    submitVideo(title: string, description: string, videoUrl: string, thumbnailUrl: string, paymentAddress: string, price: string, category: string, viewDuration: string, creatorName: string): Promise<VideoSubmissionFull>;
+    updateHomepageScript(id: bigint, name: string, scriptContent: string): Promise<HomepageScript>;
+    updateRoom(id: bigint, title: string, slug: string, description: string, price: string, thumbnailUrl: string, videoUrl: string, embedScript: string, viewDuration: string, category: string, creatorName: string): Promise<Room>;
 }
 import type { Room as _Room, UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -281,6 +282,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async addHomepageScript(arg0: string, arg1: string): Promise<HomepageScript> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addHomepageScript(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addHomepageScript(arg0, arg1);
+            return result;
+        }
+    }
     async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
         if (this.processError) {
             try {
@@ -379,7 +394,21 @@ export class Backend implements backendInterface {
             return from_candid_UserRole_n11(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getPendingSubmissions(): Promise<Array<VideoSubmission>> {
+    async getHomepageScripts(): Promise<Array<HomepageScript>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getHomepageScripts();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getHomepageScripts();
+            return result;
+        }
+    }
+    async getPendingSubmissions(): Promise<Array<VideoSubmissionFull>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getPendingSubmissions();
@@ -449,7 +478,7 @@ export class Backend implements backendInterface {
             return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getUserSubmissions(): Promise<Array<VideoSubmission>> {
+    async getUserSubmissions(): Promise<Array<VideoSubmissionFull>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getUserSubmissions();
@@ -505,6 +534,48 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async moveRoomToTop(arg0: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.moveRoomToTop(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.moveRoomToTop(arg0);
+            return result;
+        }
+    }
+    async removeHomepageScript(arg0: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.removeHomepageScript(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.removeHomepageScript(arg0);
+            return result;
+        }
+    }
+    async reorderHomepageScripts(arg0: Array<bigint>): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.reorderHomepageScripts(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.reorderHomepageScripts(arg0);
+            return result;
+        }
+    }
     async resetAdmin(): Promise<void> {
         if (this.processError) {
             try {
@@ -519,7 +590,7 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async reviewSubmission(arg0: bigint, arg1: boolean, arg2: string, arg3: string): Promise<VideoSubmission> {
+    async reviewSubmission(arg0: bigint, arg1: boolean, arg2: string, arg3: string): Promise<VideoSubmissionFull> {
         if (this.processError) {
             try {
                 const result = await this.actor.reviewSubmission(arg0, arg1, arg2, arg3);
@@ -547,7 +618,7 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async submitVideo(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string): Promise<VideoSubmission> {
+    async submitVideo(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string): Promise<VideoSubmissionFull> {
         if (this.processError) {
             try {
                 const result = await this.actor.submitVideo(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
@@ -558,48 +629,6 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.submitVideo(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
-            return result;
-        }
-    }
-    async updateRoom(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string, arg9: string, arg10: string): Promise<Room> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.updateRoom(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.updateRoom(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
-            return result;
-        }
-    }
-    async getHomepageScripts(): Promise<Array<HomepageScript>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getHomepageScripts();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getHomepageScripts();
-            return result;
-        }
-    }
-    async addHomepageScript(arg0: string, arg1: string): Promise<HomepageScript> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.addHomepageScript(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.addHomepageScript(arg0, arg1);
             return result;
         }
     }
@@ -617,30 +646,18 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async removeHomepageScript(arg0: bigint): Promise<boolean> {
+    async updateRoom(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string, arg9: string, arg10: string): Promise<Room> {
         if (this.processError) {
             try {
-                const result = await this.actor.removeHomepageScript(arg0);
+                const result = await this.actor.updateRoom(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.removeHomepageScript(arg0);
+            const result = await this.actor.updateRoom(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
             return result;
-        }
-    }
-    async reorderHomepageScripts(arg0: Array<bigint>): Promise<void> {
-        if (this.processError) {
-            try {
-                await this.actor.reorderHomepageScripts(arg0);
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            await this.actor.reorderHomepageScripts(arg0);
         }
     }
 }

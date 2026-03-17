@@ -11,6 +11,8 @@ import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import AccessControl "authorization/access-control";
 
+
+
 actor {
   include MixinStorage();
   let accessControlState = AccessControl.initState();
@@ -59,11 +61,30 @@ actor {
   stable var _stableRooms : [Room] = [];
   stable var nextRoomId : Nat = 1;
 
+  // Stable storage for room sort orders: [(roomId, sortOrder)]
+  // Rooms not in this list fall back to createdAt-descending order.
+  stable var _roomSortOrders : [(Nat, Nat)] = [];
+
   let rooms = Map.empty<Nat, Room>();
 
-  // IMPORTANT: VideoSubmission type is kept UNCHANGED from the original deployment.
-  // Changing this type would break stable memory compatibility with the existing Map.
-  // All public API functions return VideoSubmissionFull which adds denialReason.
+  func getRoomSortOrder(id : Nat) : Nat {
+    let found = _roomSortOrders.vals().find(func((k, _v) : (Nat, Nat)) : Bool { k == id });
+    switch (found) {
+      case (?(_, order)) order;
+      case null 2_000_000_000; // large fallback — unordered rooms sort last
+    };
+  };
+
+  func setRoomSortOrder(id : Nat, order : Nat) : () {
+    let filtered = _roomSortOrders.vals()
+      .filter(func((k, _v) : (Nat, Nat)) : Bool { k != id })
+      .toArray();
+    let size = filtered.size();
+    _roomSortOrders := Array.tabulate<(Nat, Nat)>(size + 1, func(i : Nat) : (Nat, Nat) {
+      if (i < size) { filtered[i] } else { (id, order) };
+    });
+  };
+
   type VideoSubmission = {
     id : Nat;
     submitterPrincipal : Principal;
@@ -80,8 +101,6 @@ actor {
     createdAt : Time.Time;
   };
 
-  // Public response type — extends VideoSubmission with denialReason.
-  // All public query/update functions return this type.
   type VideoSubmissionFull = {
     id : Nat;
     submitterPrincipal : Principal;
@@ -99,14 +118,11 @@ actor {
     denialReason : Text;
   };
 
-  // Stable storage for submissions — type MUST NOT change (Map compatibility)
   stable var _stableSubmissions : [VideoSubmission] = [];
   stable var nextSubmissionId : Nat = 1;
 
   let pendingSubmissions = Map.empty<Nat, VideoSubmission>();
 
-  // Denial reasons stored separately to avoid changing VideoSubmission type.
-  // Stable var — persists automatically across upgrades without pre/postupgrade handling.
   stable var _denialReasons : [(Nat, Text)] = [];
 
   func getDenialReason(id : Nat) : Text {
@@ -123,7 +139,7 @@ actor {
       .toArray();
     let size = filtered.size();
     _denialReasons := Array.tabulate<(Nat, Text)>(size + 1, func(i : Nat) : (Nat, Text) {
-      if (i < size) filtered[i] else (id, reason)
+      if (i < size) { filtered[i] } else { (id, reason) };
     });
   };
 
@@ -154,25 +170,20 @@ actor {
     order : Nat;
   };
 
-  // Stable storage for homepage scripts — survives canister upgrades
   stable var _stableScripts : [HomepageScript] = [];
   stable var nextScriptId : Nat = 1;
 
   let homepageScripts = Map.empty<Nat, HomepageScript>();
 
   // ── Admin bootstrap stable state ─────────────────────────────────────────
-  // Hardcoded admin PIDs — these are privileged forever.
   let hardcodedAdminTexts : [Text] = [
     "xcrfe-n64wj-5ec52-kpr3q-h5yft-ovyo6-4bjso-ubj2v-qe3uo-tm3ie-aqe",
     "dmqpn-7duh5-66nau-irxp2-tqm3o-ahcdq-36tps-krdf3-wwjiu-33hdf-mae",
   ];
 
-  // Dynamic admins: first non-hardcoded user to triple-tap after a fresh reset
-  // is stored here persistently. Survives all future upgrades.
   stable var dynamicAdmins : [Principal] = [];
   stable var firstAdminClaimed : Bool = false;
 
-  // Helper: seed a principal as admin in accessControlState
   func seedAdmin(p : Principal) {
     accessControlState.userRoles.add(p, #admin);
     accessControlState.adminAssigned := true;
@@ -183,30 +194,21 @@ actor {
     _stableRooms := rooms.values().toArray();
     _stableSubmissions := pendingSubmissions.values().toArray();
     _stableScripts := homepageScripts.values().toArray();
-    // _denialReasons is a stable var — persists automatically, no action needed here
   };
 
   system func postupgrade() {
-    // Restore rooms
     for (room in _stableRooms.vals()) {
       rooms.add(room.id, room);
     };
-    // Restore submissions
     for (sub in _stableSubmissions.vals()) {
       pendingSubmissions.add(sub.id, sub);
     };
-    // Restore homepage scripts
     for (script in _stableScripts.vals()) {
       homepageScripts.add(script.id, script);
     };
     _stableRooms := [];
     _stableSubmissions := [];
     _stableScripts := [];
-
-    // ── Re-seed admin roles into accessControlState on every upgrade ──────
-    // accessControlState is NOT stable so it resets on upgrade.
-    // We re-populate it from our stable sources so admins keep access
-    // immediately after any redeploy without needing to re-authenticate.
     for (t in hardcodedAdminTexts.vals()) {
       let p = Principal.fromText(t);
       seedAdmin(p);
@@ -214,16 +216,11 @@ actor {
     for (p in dynamicAdmins.vals()) {
       seedAdmin(p);
     };
-    // Mark firstAdminClaimed if hardcoded admins exist (so no stranger
-    // can claim the first-admin slot just because dynamicAdmins is empty).
     if (hardcodedAdminTexts.size() > 0) {
       firstAdminClaimed := true;
     };
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // Public read — no auth required so HomePage can fetch without login
   public query func getHomepageScripts() : async [HomepageScript] {
     let arr = homepageScripts.values().toArray();
     arr.sort(func(a : HomepageScript, b : HomepageScript) : Order.Order {
@@ -286,63 +283,44 @@ actor {
   };
 
   // ── Admin bootstrap ───────────────────────────────────────────────────────
-  //
-  // Called by the frontend after every authenticated actor creation.
-  // Handles three cases atomically:
-  //   1. Hardcoded admin — always granted, ensures accessControlState is in sync.
-  //   2. First-admin claim — first non-anonymous, non-hardcoded caller on a
-  //      fresh/reset canister (dynamicAdmins empty, firstAdminClaimed false)
-  //      is permanently promoted.
-  //   3. Returning user — checks both lists, returns whether caller is admin.
-  //
-  // Deployment note: after a hard canister reset use:
-  //   dfx canister stop backend && dfx deploy backend && dfx canister start backend
   public shared ({ caller }) func bootstrapAdminIfNeeded() : async Bool {
     if (caller.isAnonymous()) { return false };
-
     let callerText = caller.toText();
-
-    // Case 1: Hardcoded admin — always synced into accessControlState.
     let isHardcoded = hardcodedAdminTexts.vals().find(func(t : Text) : Bool { t == callerText }) != null;
     if (isHardcoded) {
       seedAdmin(caller);
       return true;
     };
-
-    // Case 2: First-admin claim (only once, when no dynamic admin exists yet).
     if (not firstAdminClaimed and dynamicAdmins.size() == 0) {
-      let prev = dynamicAdmins; dynamicAdmins := Array.tabulate<Principal>(prev.size() + 1, func(i) { if (i < prev.size()) prev[i] else caller });
+      let prev = dynamicAdmins; dynamicAdmins := Array.tabulate<Principal>(prev.size() + 1, func(i : Nat) : Principal { if (i < prev.size()) { prev[i] } else { caller } });
       firstAdminClaimed := true;
       seedAdmin(caller);
       return true;
     };
-
-    // Case 3: Check whether caller is already a dynamic admin.
     let isDynamic = dynamicAdmins.vals().find(func(p : Principal) : Bool { p == caller }) != null;
     if (isDynamic) {
-      // Re-sync into accessControlState in case of upgrade reset.
       seedAdmin(caller);
       return true;
     };
-
     false;
   };
 
-  // ── hasAdmin — checks both hardcoded list and dynamicAdmins ──────────────
+  public query func hasDynamicAdmin() : async Bool {
+    dynamicAdmins.size() > 0;
+  };
+
   public query func hasAdmin() : async Bool {
     dynamicAdmins.size() > 0 or hardcodedAdminTexts.size() > 0;
   };
 
-  // ── isAdmin (convenience query for the caller) ────────────────────────────
   public query ({ caller }) func isAdmin() : async Bool {
     AccessControl.isAdmin(accessControlState, caller);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-
   public shared ({ caller }) func createRoom(
     title : Text,
-    slug : Text,
+    _slug : Text,
     description : Text,
     price : Text,
     thumbnailUrl : Text,
@@ -359,10 +337,13 @@ actor {
     let roomId = nextRoomId;
     nextRoomId += 1;
 
+    // Shift all existing rooms' order by +1 when adding new room at the top
+    _roomSortOrders := _roomSortOrders.vals().map<(Nat, Nat), (Nat, Nat)>(func((k, v)) { (k, v + 1) }).toArray();
+
     let newRoom : Room = {
       id = roomId;
       title;
-      slug;
+      slug = makeUniqueSlug(title);
       description;
       price;
       thumbnailUrl;
@@ -374,6 +355,8 @@ actor {
       creatorName;
     };
     rooms.add(roomId, newRoom);
+
+    setRoomSortOrder(roomId, 1);
     newRoom;
   };
 
@@ -420,11 +403,23 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) { Runtime.trap("Unauthorized") };
     let existed = rooms.containsKey(id);
     rooms.remove(id);
+    _roomSortOrders := _roomSortOrders.vals()
+      .filter(func((k, _v) : (Nat, Nat)) : Bool { k != id })
+      .toArray();
     existed;
   };
 
   public query func getRooms() : async [Room] {
-    rooms.values().toArray().sort();
+    let arr = rooms.values().toArray();
+    arr.sort(func(r1 : Room, r2 : Room) : Order.Order {
+      let o1 = _roomSortOrders.vals().find(func((k, _v) : (Nat, Nat)) : Bool { k == r1.id });
+      let o2 = _roomSortOrders.vals().find(func((k, _v) : (Nat, Nat)) : Bool { k == r2.id });
+      let order1 : Nat = switch (o1) { case (?(_, v)) v; case null 2_000_000_000 };
+      let order2 : Nat = switch (o2) { case (?(_, v)) v; case null 2_000_000_000 };
+      if (order1 < order2) #less
+      else if (order1 > order2) #greater
+      else Int.compare(r2.createdAt, r1.createdAt) // tiebreaker: newer first
+    });
   };
 
   public query func getRoomById(id : Nat) : async ?Room {
@@ -433,6 +428,34 @@ actor {
 
   public query func getRoomBySlug(slug : Text) : async ?Room {
     rooms.values().find(func(room) { room.slug == slug });
+  };
+
+  public shared ({ caller }) func moveRoomToTop(id : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can reorder rooms");
+    };
+    if (not rooms.containsKey(id)) { return false };
+
+    let allRooms = rooms.values().toArray();
+    let sorted = allRooms.sort(func(r1 : Room, r2 : Room) : Order.Order {
+      let o1 = _roomSortOrders.vals().find(func((k, _v) : (Nat, Nat)) : Bool { k == r1.id });
+      let o2 = _roomSortOrders.vals().find(func((k, _v) : (Nat, Nat)) : Bool { k == r2.id });
+      let order1 : Nat = switch (o1) { case (?(_, v)) v; case null 2_000_000_000 };
+      let order2 : Nat = switch (o2) { case (?(_, v)) v; case null 2_000_000_000 };
+      if (order1 < order2) #less
+      else if (order1 > order2) #greater
+      else Int.compare(r2.createdAt, r1.createdAt)
+    });
+
+    setRoomSortOrder(id, 1);
+    var idx : Nat = 2;
+    for (room in sorted.vals()) {
+      if (room.id != id) {
+        setRoomSortOrder(room.id, idx);
+        idx += 1;
+      };
+    };
+    true;
   };
 
   public shared ({ caller }) func submitVideo(
@@ -501,10 +524,14 @@ actor {
         if (approve) {
           let roomId = nextRoomId;
           nextRoomId += 1;
+
+          // Shift all existing rooms' order by +1 when adding new room at the top
+          _roomSortOrders := _roomSortOrders.vals().map<(Nat, Nat), (Nat, Nat)>(func((k, v)) { (k, v + 1) }).toArray();
+
           let newRoom : Room = {
             id = roomId;
             title = submission.title;
-            slug = toSlug(submission.title);
+            slug = makeUniqueSlug(submission.title);
             description = submission.description;
             price = submission.price;
             thumbnailUrl = submission.thumbnailUrl;
@@ -516,6 +543,8 @@ actor {
             creatorName = submission.creatorName;
           };
           rooms.add(roomId, newRoom);
+
+          setRoomSortOrder(roomId, 1);
           let updated : VideoSubmission = { submission with status = "Approved" };
           pendingSubmissions.add(id, updated);
           toFull(updated);
@@ -536,6 +565,25 @@ actor {
     Text.fromArray(filteredChars);
   };
 
+  func makeUniqueSlug(title : Text) : Text {
+    let baseSlug = toSlug(title);
+    var uniqueSuffix : Nat = 0;
+    var uniqueSlug = baseSlug;
+
+    func isUnique(slug : Text) : Bool {
+      switch (rooms.values().find(func(room) { room.slug == slug })) {
+        case (null) { true };
+        case (_) { false };
+      };
+    };
+
+    loop {
+      if (isUnique(uniqueSlug)) { return uniqueSlug };
+      uniqueSuffix += 1;
+      uniqueSlug := baseSlug # "-" # uniqueSuffix.toText();
+    };
+  };
+
   public shared ({ caller }) func resetAdmin() : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: only the current admin can reset admin access");
@@ -544,7 +592,6 @@ actor {
     accessControlState.adminAssigned := false;
   };
 
-  // Keep claimHardcodedAdmin for backward-compat; delegates to bootstrapAdminIfNeeded logic.
   public shared ({ caller }) func claimHardcodedAdmin() : async Bool {
     let callerText = caller.toText();
     let isOwner = hardcodedAdminTexts.vals().find(func(pid : Text) : Bool { pid == callerText }) != null;
@@ -556,3 +603,4 @@ actor {
     };
   };
 };
+

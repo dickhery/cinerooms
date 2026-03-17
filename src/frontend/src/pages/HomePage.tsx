@@ -13,13 +13,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNavigate } from "@tanstack/react-router";
 import { Play, Search, ShieldAlert, Tv2, Video, X } from "lucide-react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AdminBootstrapHint } from "../components/cinema/AdminBootstrapHint";
 import { RoomCard } from "../components/cinema/RoomCard";
 import { RoomCardSkeleton } from "../components/cinema/RoomCardSkeleton";
+import { WelcomeCurtain } from "../components/cinema/WelcomeCurtain";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
-import { useGetHomepageScripts, useGetRooms } from "../hooks/useQueries";
+import {
+  useGetHomepageScripts,
+  useGetRooms,
+  useHasDynamicAdmin,
+} from "../hooks/useQueries";
 
 const CATEGORIES = [
   "Action",
@@ -42,23 +48,26 @@ export function HomePage() {
   const { identity, login, isLoggingIn } = useInternetIdentity();
   const navigate = useNavigate();
 
+  // Admin bootstrap hint
+  const { data: hasDynamicAdmin } = useHasDynamicAdmin();
+  // NOTE: We intentionally do NOT check isCallerAdmin here.
+  // Hardcoded admin PIDs survive canister resets (they are baked into Motoko code, not stable variables).
+  // So after a hard reset, the hardcoded admin's II session is still active and isCallerAdmin() returns true,
+  // which would hide the hint even though no dynamic admin has been bootstrapped yet.
+  // The hint must appear for ALL visitors whenever hasDynamicAdmin is false.
+  const showBootstrapHint = hasDynamicAdmin === false;
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     new Set(),
   );
 
   // Adult content gate state
-  // `adultConfirmed` tracks whether the user has passed the age confirmation this session.
   const [adultConfirmed, setAdultConfirmed] = useState(false);
-  // `showAdultDialog` controls visibility of the age-confirmation popup.
   const [showAdultDialog, setShowAdultDialog] = useState(false);
 
-  // Flag: true when the user clicked "Submit Video" and triggered II login.
-  // We watch `identity` (not `isLoginSuccess`) because `isLoginSuccess` resets
-  // to "idle" almost immediately, making it unreliable for async navigation.
   const pendingNavToSubmit = useRef(false);
 
-  // Navigate to /submit once identity is available after a submit-triggered login
   useEffect(() => {
     if (pendingNavToSubmit.current && identity) {
       pendingNavToSubmit.current = false;
@@ -69,7 +78,6 @@ export function HomePage() {
   // Extra defensive cleanup so any stray widget from a previous room visit is gone
   useEffect(() => {
     try {
-      // Extra defensive cleanup so any stray widget from a previous room visit is gone
       for (const s of Array.from(
         document.querySelectorAll(
           'script[data-paywall], script[src*="paywall.js"]',
@@ -84,9 +92,7 @@ export function HomePage() {
     }
   }, []);
 
-  // Inject homepage scripts into <head> in order. Scripts are re-created as real
-  // DOM <script> elements so they execute, and a cache-buster is added to src
-  // URLs so they re-run on each mount (same pattern as room embed scripts).
+  // Inject homepage scripts into <head> in order.
   useEffect(() => {
     if (!homepageScripts || homepageScripts.length === 0) return;
 
@@ -101,7 +107,6 @@ export function HomePage() {
       const scriptEls = Array.from(parsed.querySelectorAll("script"));
 
       if (scriptEls.length === 0) {
-        // Raw JS — wrap and execute
         const el = document.createElement("script");
         el.setAttribute("data-homepage-script", "true");
         el.setAttribute("data-script-id", hs.id.toString());
@@ -134,11 +139,9 @@ export function HomePage() {
     }
 
     return () => {
-      // Clean up on unmount so scripts don't persist when navigating away
       for (const el of injected) {
         el.remove();
       }
-      // Belt-and-suspenders: remove any remaining homepage scripts
       for (const s of Array.from(
         document.querySelectorAll("script[data-homepage-script]"),
       )) {
@@ -148,24 +151,20 @@ export function HomePage() {
   }, [homepageScripts]);
 
   const toggleCategory = (cat: string) => {
-    // Special handling for "Adult" category — require age confirmation first
     if (cat === "Adult") {
       if (selectedCategories.has("Adult")) {
-        // Already selected — deselect directly (no confirmation needed to hide)
         setSelectedCategories((prev) => {
           const next = new Set(prev);
           next.delete("Adult");
           return next;
         });
       } else if (adultConfirmed) {
-        // User already confirmed this session — apply the filter directly
         setSelectedCategories((prev) => {
           const next = new Set(prev);
           next.add("Adult");
           return next;
         });
       } else {
-        // Not yet confirmed — show the age-gate dialog
         setShowAdultDialog(true);
       }
       return;
@@ -182,7 +181,6 @@ export function HomePage() {
     });
   };
 
-  // Called when user clicks "Yes, I am 18+" in the adult confirmation dialog
   const handleAdultConfirm = () => {
     setAdultConfirmed(true);
     setSelectedCategories((prev) => {
@@ -193,7 +191,6 @@ export function HomePage() {
     setShowAdultDialog(false);
   };
 
-  // Called when user clicks "No" — deny access, close dialog without changing filters
   const handleAdultDeny = () => {
     setShowAdultDialog(false);
     toast.info("You must be 18+ to view adult content.");
@@ -206,20 +203,14 @@ export function HomePage() {
 
   const handleSubmitVideo = () => {
     if (identity) {
-      // Already authenticated — go straight to the submission page
       void navigate({ to: "/submit" });
     } else {
-      // Not authenticated yet — set the flag BEFORE calling login() so the
-      // useEffect above can navigate as soon as identity becomes available.
       toast.info("Please log in with Internet Identity to submit a video.");
       pendingNavToSubmit.current = true;
       login();
     }
   };
 
-  // Filter rooms by search + category
-  // Adult-category rooms are ALWAYS hidden unless the user has explicitly
-  // selected the "Adult" filter chip (which requires age confirmation).
   const filteredRooms = rooms?.filter((room) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
@@ -232,8 +223,6 @@ export function HomePage() {
     const matchesCategory =
       selectedCategories.size === 0 || selectedCategories.has(room.category);
 
-    // Adult videos are hidden by default — only show them when the
-    // "Adult" chip is active (meaning the user has confirmed their age).
     const isAdultRoom = room.category === "Adult";
     if (isAdultRoom && !selectedCategories.has("Adult")) {
       return false;
@@ -244,6 +233,13 @@ export function HomePage() {
 
   return (
     <main className="flex min-h-screen flex-col">
+      <WelcomeCurtain forceShow={hasDynamicAdmin === false} />
+
+      {/* Admin bootstrap hint — shown when no dynamic admin exists yet */}
+      <AnimatePresence>
+        {showBootstrapHint && <AdminBootstrapHint />}
+      </AnimatePresence>
+
       {/* Age Confirmation Dialog for Adult Content */}
       <AlertDialog open={showAdultDialog} onOpenChange={setShowAdultDialog}>
         <AlertDialogContent

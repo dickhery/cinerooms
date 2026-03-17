@@ -6,23 +6,17 @@ import { getSecretParameter } from "../utils/urlParams";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const ACTOR_QUERY_KEY = "actor";
-
-type ActorResult = {
-  actor: backendInterface;
-  bootstrapIsAdmin: boolean;
-};
-
 export function useActor() {
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
-  const actorQuery = useQuery<ActorResult>({
+  const actorQuery = useQuery<backendInterface>({
     queryKey: [ACTOR_QUERY_KEY, identity?.getPrincipal().toString()],
     queryFn: async () => {
       const isAuthenticated = !!identity;
 
       if (!isAuthenticated) {
-        const actor = await createActorWithConfig();
-        return { actor, bootstrapIsAdmin: false };
+        // Return anonymous actor if not authenticated
+        return await createActorWithConfig();
       }
 
       const actorOptions = {
@@ -32,53 +26,13 @@ export function useActor() {
       };
 
       const actor = await createActorWithConfig(actorOptions);
-
-      // Optional secret-based init (non-fatal on fresh canister)
       const adminToken = getSecretParameter("caffeineAdminToken") || "";
-      if (adminToken) {
-        try {
-          await actor._initializeAccessControlWithSecret(adminToken);
-        } catch (err) {
-          console.warn(
-            "[useActor] secret init failed (safe on fresh canister):",
-            err,
-          );
-        }
-      } else {
-        try {
-          await actor._initializeAccessControlWithSecret("");
-        } catch {
-          // ignore
-        }
-      }
-
-      // Bootstrap first-admin if needed
-      let bootstrapIsAdmin = false;
-      try {
-        bootstrapIsAdmin = await (actor as any).bootstrapAdminIfNeeded();
-      } catch (err) {
-        console.warn("[useActor] bootstrapAdminIfNeeded failed:", err);
-        // fallback to claimHardcodedAdmin
-        try {
-          bootstrapIsAdmin = await (actor as any).claimHardcodedAdmin();
-        } catch {
-          // ignore
-        }
-      }
-
-      // Final authoritative check
-      if (!bootstrapIsAdmin) {
-        try {
-          bootstrapIsAdmin = await actor.isCallerAdmin();
-        } catch {
-          // ignore
-        }
-      }
-
-      return { actor, bootstrapIsAdmin };
+      await actor._initializeAccessControlWithSecret(adminToken);
+      return actor;
     },
-    staleTime: 0,
-    refetchOnWindowFocus: false,
+    // Only refetch when identity changes
+    staleTime: Number.POSITIVE_INFINITY,
+    // This will cause the actor to be recreated when the identity changes
     enabled: true,
   });
 
@@ -99,9 +53,7 @@ export function useActor() {
   }, [actorQuery.data, queryClient]);
 
   return {
-    actor: actorQuery.data?.actor || null,
-    bootstrapIsAdmin: actorQuery.data?.bootstrapIsAdmin ?? false,
+    actor: actorQuery.data || null,
     isFetching: actorQuery.isFetching,
-    refetchActor: actorQuery.refetch,
   };
 }

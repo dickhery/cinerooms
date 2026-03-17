@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import { isMobile } from "../utils/mobileDetect";
 
 interface AdminContextType {
   isAdmin: boolean;
@@ -30,7 +31,8 @@ const HARDCODED_ADMIN_PIDS = [
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const { login, clear, identity, isInitializing } = useInternetIdentity();
-  const { actor, bootstrapIsAdmin, isFetching, refetchActor } = useActor();
+  const { actor, isFetching } = useActor();
+  const refetchActor = async () => {};
   const queryClient = useQueryClient();
 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -50,6 +52,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [adminLoginTriggered, setAdminLoginTriggered] = useState(false);
 
   const handleLogoClick = useCallback(() => {
+    // Desktop-only app — prevent admin login on mobile
+    if (isMobile) return;
     clickCount.current += 1;
     clearTimeout(clickTimer.current);
     clickTimer.current = setTimeout(() => {
@@ -78,7 +82,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       setAdminLoginTriggered(true);
       login();
     }
-  }, [login, identity, refetchActor]);
+  }, [login, identity]);
 
   const logout = useCallback(() => {
     clear();
@@ -127,10 +131,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   // ── Effect 3: Triple-tap admin check for non-hardcoded PIDs ──────────────
   // Runs after triple-tap completes authentication. Calls bootstrapAdminIfNeeded
-  // on the backend which atomically handles:
-  //   - first-admin claim (fresh canister)
-  //   - dynamic admin re-sync after upgrade
-  //   - hard denial for non-admins
+  // on the backend which atomically enforces "first user only" — only the first
+  // non-hardcoded user to authenticate after a canister reset is promoted.
   useEffect(() => {
     if (!adminLoginTriggered) return;
     if (!identity || !actor || isInitializing) return;
@@ -151,44 +153,36 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const checkAdminStatus = async () => {
       setIsCheckingAdmin(true);
       try {
-        // bootstrapAdminIfNeeded was already called inside useActor when the
-        // authenticated actor was created, and its result is available as
-        // bootstrapIsAdmin. If it was true, we're done.
-        if (bootstrapIsAdmin) {
+        // bootstrapAdminIfNeeded enforces "first user only" atomically:
+        // - Returns true for the first non-hardcoded user after a canister reset
+        // - Returns true for returning dynamic admins
+        // - Returns false for everyone else
+        let bootstrapped = false;
+        try {
+          bootstrapped = await actor.bootstrapAdminIfNeeded();
+        } catch (err) {
+          console.warn("[AdminContext] bootstrapAdminIfNeeded failed:", err);
+        }
+
+        if (bootstrapped) {
           setIsAdmin(true);
           return;
         }
 
-        // Do a final authoritative isCallerAdmin() check. This covers the case
-        // where bootstrapAdminIfNeeded() failed transiently in useActor but the
-        // user is already an admin from a previous session.
-        let callerIsAdmin = false;
+        // Fallback: check via isAdmin() (custom backend function, not isCallerAdmin)
+        // This covers the case where the user is already a dynamic admin but
+        // bootstrapAdminIfNeeded had a transient failure.
+        let adminCheck = false;
         try {
-          callerIsAdmin = await actor.isCallerAdmin();
+          adminCheck = await actor.isAdmin();
         } catch (err) {
-          console.warn("[AdminContext] isCallerAdmin check failed:", err);
+          console.warn("[AdminContext] isAdmin fallback check failed:", err);
         }
 
-        if (callerIsAdmin) {
+        if (adminCheck) {
           setIsAdmin(true);
         } else {
-          // Last attempt: call bootstrapAdminIfNeeded() directly in case
-          // the actor was cached from a session where it hadn't run yet.
-          let directBootstrap = false;
-          try {
-            directBootstrap = await actor.bootstrapAdminIfNeeded();
-          } catch (err) {
-            console.warn(
-              "[AdminContext] direct bootstrapAdminIfNeeded failed:",
-              err,
-            );
-          }
-
-          if (directBootstrap) {
-            setIsAdmin(true);
-          } else {
-            setShowRestrictedDialog(true);
-          }
+          setShowRestrictedDialog(true);
         }
       } catch (err) {
         console.error("Admin check failed:", err);
@@ -206,7 +200,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     actor,
     isInitializing,
     isFetching,
-    bootstrapIsAdmin,
     queryClient,
   ]);
 

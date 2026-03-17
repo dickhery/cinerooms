@@ -10,6 +10,12 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface HomepageScript {
+  'id' : bigint,
+  'scriptContent' : string,
+  'order' : bigint,
+  'name' : string,
+}
 export interface Room {
   'id' : bigint,
   'viewDuration' : string,
@@ -29,11 +35,12 @@ export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
-export interface VideoSubmission {
+export interface VideoSubmissionFull {
   'id' : bigint,
   'viewDuration' : string,
   'status' : string,
   'title' : string,
+  'denialReason' : string,
   'thumbnailUrl' : string,
   'submitterPrincipal' : Principal,
   'createdAt' : Time,
@@ -43,7 +50,6 @@ export interface VideoSubmission {
   'category' : string,
   'price' : string,
   'videoUrl' : string,
-  'denialReason' : string,
 }
 export interface _CaffeineStorageCreateCertificateResult {
   'method' : string,
@@ -55,12 +61,6 @@ export interface _CaffeineStorageRefillInformation {
 export interface _CaffeineStorageRefillResult {
   'success' : [] | [boolean],
   'topped_up_amount' : [] | [bigint],
-}
-export interface HomepageScript {
-  'id' : bigint,
-  'name' : string,
-  'scriptContent' : string,
-  'order' : bigint,
 }
 export interface _SERVICE {
   '_caffeineStorageBlobIsLive' : ActorMethod<[Uint8Array], boolean>,
@@ -79,6 +79,7 @@ export interface _SERVICE {
   >,
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'addHomepageScript' : ActorMethod<[string, string], HomepageScript>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'bootstrapAdminIfNeeded' : ActorMethod<[], boolean>,
   'claimHardcodedAdmin' : ActorMethod<[], boolean>,
@@ -100,26 +101,32 @@ export interface _SERVICE {
   'deleteRoom' : ActorMethod<[bigint], boolean>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
-  'getPendingSubmissions' : ActorMethod<[], Array<VideoSubmission>>,
+  'getHomepageScripts' : ActorMethod<[], Array<HomepageScript>>,
+  'getPendingSubmissions' : ActorMethod<[], Array<VideoSubmissionFull>>,
   'getRoomById' : ActorMethod<[bigint], [] | [Room]>,
   'getRoomBySlug' : ActorMethod<[string], [] | [Room]>,
   'getRooms' : ActorMethod<[], Array<Room>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
-  'getUserSubmissions' : ActorMethod<[], Array<VideoSubmission>>,
+  'getUserSubmissions' : ActorMethod<[], Array<VideoSubmissionFull>>,
   'hasAdmin' : ActorMethod<[], boolean>,
   'isAdmin' : ActorMethod<[], boolean>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
-  'addHomepageScript' : ActorMethod<[string, string], HomepageScript>,
-  'getHomepageScripts' : ActorMethod<[], Array<HomepageScript>>,
-  'updateHomepageScript' : ActorMethod<[bigint, string, string], HomepageScript>,
+  'moveRoomToTop' : ActorMethod<[bigint], boolean>,
   'removeHomepageScript' : ActorMethod<[bigint], boolean>,
   'reorderHomepageScripts' : ActorMethod<[Array<bigint>], undefined>,
   'resetAdmin' : ActorMethod<[], undefined>,
-  'reviewSubmission' : ActorMethod<[bigint, boolean, string, string], VideoSubmission>,
+  'reviewSubmission' : ActorMethod<
+    [bigint, boolean, string, string],
+    VideoSubmissionFull
+  >,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'submitVideo' : ActorMethod<
     [string, string, string, string, string, string, string, string, string],
-    VideoSubmission
+    VideoSubmissionFull
+  >,
+  'updateHomepageScript' : ActorMethod<
+    [bigint, string, string],
+    HomepageScript
   >,
   'updateRoom' : ActorMethod<
     [

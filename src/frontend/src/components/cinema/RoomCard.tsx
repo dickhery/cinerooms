@@ -32,7 +32,7 @@ export function RoomCard({ room, index }: RoomCardProps) {
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const shareUrl = `${window.location.origin}/room/${room.id}`;
+    const shareUrl = `${window.location.origin}/room/${room.slug}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       toast.success("Room link copied!");
     });
@@ -131,8 +131,8 @@ export function RoomCard({ room, index }: RoomCardProps) {
 
           <div className="mt-auto pt-3">
             <Link
-              to="/room/$id"
-              params={{ id: room.id.toString() }}
+              to="/room/$slug"
+              params={{ slug: room.slug }}
               onClick={(e) => e.stopPropagation()}
             >
               <Button
@@ -250,8 +250,8 @@ export function RoomCard({ room, index }: RoomCardProps) {
                 Close
               </Button>
               <Link
-                to="/room/$id"
-                params={{ id: room.id.toString() }}
+                to="/room/$slug"
+                params={{ slug: room.slug }}
                 className="flex-1"
                 onClick={() => setDialogOpen(false)}
               >

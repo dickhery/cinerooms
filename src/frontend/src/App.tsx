@@ -15,10 +15,12 @@ import { RestrictedDialog } from "./components/cinema/RestrictedDialog";
 import { AdminProvider, useAdmin } from "./contexts/AdminContext";
 import { useDevToolsDetection } from "./hooks/useDevToolsDetection";
 import { AdminDashboard } from "./pages/AdminDashboard";
+import { DesktopOnlyPage } from "./pages/DesktopOnlyPage";
 import { DevToolsBlockedPage } from "./pages/DevToolsBlockedPage";
 import { HomePage } from "./pages/HomePage";
 import { RoomPage } from "./pages/RoomPage";
 import { SubmitVideoPage } from "./pages/SubmitVideoPage";
+import { isMobile } from "./utils/mobileDetect";
 import { setupRoomLifecycleListener } from "./utils/roomLifecycle";
 
 // Root layout
@@ -30,28 +32,45 @@ function RootLayout() {
 
   return (
     <AdminProvider>
-      <DevToolsGuard>
-        <div className="flex min-h-screen flex-col bg-background">
-          <Header />
-          <div className="flex flex-1 flex-col pt-16">
-            <Outlet />
+      <MobileGuard>
+        <DevToolsGuard>
+          <div className="flex min-h-screen flex-col bg-background">
+            <Header />
+            <div className="flex flex-1 flex-col pt-16">
+              <Outlet />
+            </div>
+            <Footer />
+            <RestrictedDialog />
+            <Toaster
+              position="bottom-right"
+              toastOptions={{
+                style: {
+                  background: "oklch(0.1 0 0)",
+                  border: "1px solid oklch(0.22 0.005 280)",
+                  color: "oklch(0.93 0.01 90)",
+                },
+              }}
+            />
           </div>
-          <Footer />
-          <RestrictedDialog />
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: "oklch(0.1 0 0)",
-                border: "1px solid oklch(0.22 0.005 280)",
-                color: "oklch(0.93 0.01 90)",
-              },
-            }}
-          />
-        </div>
-      </DevToolsGuard>
+        </DevToolsGuard>
+      </MobileGuard>
     </AdminProvider>
   );
+}
+
+// Redirects mobile visitors to the desktop-only page
+function MobileGuard({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const routerState = useRouterState();
+  const currentPath = routerState.location.pathname;
+
+  useEffect(() => {
+    if (isMobile && currentPath !== "/desktop-only") {
+      void navigate({ to: "/desktop-only" });
+    }
+  }, [currentPath, navigate]);
+
+  return <>{children}</>;
 }
 
 // Guard component — must be inside AdminProvider to access useAdmin
@@ -86,7 +105,7 @@ const homeRoute = createRoute({
 
 const roomRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/room/$id",
+  path: "/room/$slug",
   component: RoomPage,
 });
 
@@ -108,12 +127,19 @@ const devToolsBlockedRoute = createRoute({
   component: DevToolsBlockedPage,
 });
 
+const desktopOnlyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/desktop-only",
+  component: DesktopOnlyPage,
+});
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
   roomRoute,
   adminRoute,
   submitRoute,
   devToolsBlockedRoute,
+  desktopOnlyRoute,
 ]);
 
 const router = createRouter({ routeTree });

@@ -151,6 +151,7 @@ export function SubmitVideoPage() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      // Desktop-only app — all video formats re-enabled
       // Check size limit (2GB)
       if (file.size > 2 * 1024 * 1024 * 1024) {
         toast.error(
@@ -407,8 +408,8 @@ export function SubmitVideoPage() {
               <Label className="text-sm font-medium text-muted-foreground">
                 Video File *
               </Label>
-              <p className="text-xs text-muted-foreground/50">
-                Accepted: .mp4, .webm, .mov — Max 2GB
+              <p className="text-xs text-muted-foreground/60">
+                Upload your video file. Max 2 GB.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
@@ -430,7 +431,7 @@ export function SubmitVideoPage() {
                 <input
                   ref={videoInputRef}
                   type="file"
-                  accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime"
+                  accept="video/*"
                   className="hidden"
                   onChange={handleVideoChange}
                 />
@@ -441,6 +442,7 @@ export function SubmitVideoPage() {
                   </span>
                 )}
               </div>
+
               {videoUpload.isUploading && (
                 <div className="mt-2 space-y-1">
                   <Progress value={videoUpload.progress} className="h-1.5" />

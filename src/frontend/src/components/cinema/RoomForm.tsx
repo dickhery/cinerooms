@@ -17,7 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, Loader2, Upload, X } from "lucide-react";
+import { AlertCircle, CheckCircle, Loader2, Upload, X } from "lucide-react";
+import { motion } from "motion/react";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Room } from "../../backend.d";
@@ -119,7 +120,6 @@ export function RoomForm({ room, open, onClose }: RoomFormProps) {
   );
   const [category, setCategory] = useState(room?.category ?? "Other");
   const [creatorName, setCreatorName] = useState(room?.creatorName ?? "");
-
   const videoInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
@@ -140,6 +140,7 @@ export function RoomForm({ room, open, onClose }: RoomFormProps) {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      // Desktop-only app — all video formats re-enabled
       const url = await videoUpload.upload(file);
       if (url) setVideoUrl(url);
     },
@@ -243,6 +244,10 @@ export function RoomForm({ room, open, onClose }: RoomFormProps) {
             <Label className="text-sm font-medium text-muted-foreground">
               Video File
             </Label>
+            {/* MP4 notice */}
+            <p className="text-xs text-muted-foreground/60">
+              Upload your video file. Max 2 GB.
+            </p>
             <div className="flex items-center gap-3">
               <Button
                 data-ocid="room_form.video_upload_button"
@@ -276,8 +281,7 @@ export function RoomForm({ room, open, onClose }: RoomFormProps) {
                   </span>
                 </div>
               )}
-              {/* Compact badge shown when a video URL is set and not currently uploading.
-                  Replaces both the raw URL <p> and the filename span to prevent dialog stretching. */}
+              {/* Compact badge shown when a video URL is set and not currently uploading. */}
               {videoUrl && !videoUpload.isUploading && (
                 <div className="flex min-w-0 items-center gap-1.5 rounded border border-border bg-background px-2 py-1">
                   <CheckCircle size={13} className="shrink-0 text-cinema-red" />

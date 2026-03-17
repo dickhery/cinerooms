@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import type { Room, VideoSubmission } from "../backend.d";
+import type { Room, VideoSubmissionFull } from "../backend.d";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
@@ -11,16 +11,10 @@ export function useGetRooms() {
   return useQuery<Room[]>({
     queryKey: ["rooms"],
     queryFn: async () => {
-      // getRooms() is a public query — works with any actor (anonymous or authenticated).
-      // If actor is not ready yet, return cached empty array and retry when it is.
       if (!actor) return [];
       return actor.getRooms();
     },
-    // Always enabled — we want rooms to load immediately on page load with the
-    // anonymous actor. The query will refetch automatically when the actor changes.
     enabled: true,
-    // Keep previous data while refetching so the grid never flickers to empty
-    // during the anonymous → authenticated actor transition.
     placeholderData: (prev) => prev,
   });
 }
@@ -34,6 +28,18 @@ export function useGetRoomById(id: bigint | null) {
       return actor.getRoomById(id);
     },
     enabled: !!actor && id !== null,
+  });
+}
+
+export function useGetRoomBySlug(slug: string | null) {
+  const { actor } = useActor();
+  return useQuery<Room | null>({
+    queryKey: ["room", "slug", slug],
+    queryFn: async () => {
+      if (!actor || !slug) return null;
+      return actor.getRoomBySlug(slug);
+    },
+    enabled: !!actor && !!slug,
   });
 }
 
@@ -59,6 +65,26 @@ export function useHasAdmin() {
       return actor.hasAdmin();
     },
     enabled: !!actor && !isFetching,
+  });
+}
+
+// ─── Dynamic admin check ──────────────────────────────────────────────────────────
+// Returns false when only hardcoded PIDs exist (no one has triple-tapped to claim admin).
+// Returns true once a dynamic admin has been bootstrapped — hint should never show again.
+export function useHasDynamicAdmin() {
+  const { actor } = useActor();
+  return useQuery<boolean>({
+    queryKey: ["hasDynamicAdmin"],
+    queryFn: async () => {
+      if (!actor) return true; // hide hint until actor is ready
+      return (actor as any).hasDynamicAdmin();
+    },
+    enabled: !!actor,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      // Poll every 5 seconds until a dynamic admin is set
+      return query.state.data === false ? 5000 : false;
+    },
   });
 }
 
@@ -153,6 +179,20 @@ export function useDeleteRoom() {
   });
 }
 
+export function useMoveRoomToTop() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not authenticated");
+      return actor.moveRoomToTop(id);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+    },
+  });
+}
+
 // ─── Video submission queries ─────────────────────────────────────────────────────
 
 export function useSubmitVideo() {
@@ -214,7 +254,7 @@ export function useSubmitVideo() {
 
 export function useGetUserSubmissions() {
   const { actor, isFetching } = useActor();
-  return useQuery<VideoSubmission[]>({
+  return useQuery<VideoSubmissionFull[]>({
     queryKey: ["userSubmissions"],
     queryFn: async () => {
       if (!actor) return [];
@@ -226,7 +266,7 @@ export function useGetUserSubmissions() {
 
 export function useGetPendingSubmissions() {
   const { actor, isFetching } = useActor();
-  return useQuery<VideoSubmission[]>({
+  return useQuery<VideoSubmissionFull[]>({
     queryKey: ["pendingSubmissions"],
     queryFn: async () => {
       if (!actor) return [];

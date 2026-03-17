@@ -32,6 +32,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  ArrowUp,
   Check,
   ChevronDown,
   ChevronUp,
@@ -49,7 +50,7 @@ import {
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { HomepageScript, Room, VideoSubmission } from "../backend.d";
+import type { HomepageScript, Room, VideoSubmissionFull } from "../backend.d";
 import { RoomForm } from "../components/cinema/RoomForm";
 import { useAdmin } from "../contexts/AdminContext";
 import {
@@ -58,6 +59,7 @@ import {
   useGetHomepageScripts,
   useGetPendingSubmissions,
   useGetRooms,
+  useMoveRoomToTop,
   useRemoveHomepageScript,
   useReorderHomepageScripts,
   useReviewSubmission,
@@ -102,6 +104,7 @@ export function AdminDashboard() {
   const { data: pendingSubmissions, isLoading: isLoadingSubmissions } =
     useGetPendingSubmissions();
   const deleteRoom = useDeleteRoom();
+  const moveToTop = useMoveRoomToTop();
   const reviewSubmission = useReviewSubmission();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -109,11 +112,12 @@ export function AdminDashboard() {
   const [deletingRoom, setDeletingRoom] = useState<Room | null>(null);
   const [reviewingId, setReviewingId] = useState<bigint | null>(null);
   const [approvingSubmission, setApprovingSubmission] =
-    useState<VideoSubmission | null>(null);
+    useState<VideoSubmissionFull | null>(null);
   const [approveEmbedScript, setApproveEmbedScript] = useState("");
   // State for the content preview modal
   const [previewingSubmission, setPreviewingSubmission] =
-    useState<VideoSubmission | null>(null);
+    useState<VideoSubmissionFull | null>(null);
+  const [previewingRoom, setPreviewingRoom] = useState<Room | null>(null);
 
   // State for deny dialog
   const [showDenyDialog, setShowDenyDialog] = useState(false);
@@ -380,9 +384,9 @@ export function AdminDashboard() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.1 }}
-                className="overflow-hidden rounded-lg border border-border/60"
+                className="overflow-x-auto rounded-lg border border-border/60"
               >
-                <table className="w-full text-sm">
+                <table className="hidden sm:table w-full text-sm">
                   <thead className="border-b border-border/60 bg-muted/30">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -415,12 +419,18 @@ export function AdminDashboard() {
                         {/* Thumbnail + title */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="h-12 w-20 shrink-0 overflow-hidden rounded bg-muted">
+                            <button
+                              type="button"
+                              data-ocid={`admin.room_preview_button.${index + 1}`}
+                              title="Preview video"
+                              onClick={() => setPreviewingRoom(room)}
+                              className="group relative h-12 w-20 shrink-0 overflow-hidden rounded bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-cinema-red/60 cursor-pointer"
+                            >
                               {room.thumbnailUrl ? (
                                 <img
                                   src={room.thumbnailUrl}
                                   alt={room.title}
-                                  className="h-full w-full object-cover"
+                                  className="h-full w-full object-cover transition-opacity group-hover:opacity-60"
                                 />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center">
@@ -430,7 +440,13 @@ export function AdminDashboard() {
                                   />
                                 </div>
                               )}
-                            </div>
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Eye
+                                  size={16}
+                                  className="text-white drop-shadow"
+                                />
+                              </div>
+                            </button>
                             <div className="min-w-0">
                               <p className="font-medium text-foreground truncate">
                                 {room.title}
@@ -472,6 +488,25 @@ export function AdminDashboard() {
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-2">
                             <Button
+                              data-ocid={`admin.rooms.move_top_button.${index + 1}`}
+                              variant="ghost"
+                              size="sm"
+                              title="Move to top"
+                              disabled={
+                                moveToTop.isPending &&
+                                moveToTop.variables === room.id
+                              }
+                              onClick={() => moveToTop.mutate(room.id)}
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            >
+                              {moveToTop.isPending &&
+                              moveToTop.variables === room.id ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <ArrowUp size={14} />
+                              )}
+                            </Button>
+                            <Button
                               data-ocid={`admin.edit_button.${index + 1}`}
                               variant="ghost"
                               size="sm"
@@ -495,6 +530,99 @@ export function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Mobile card list - visible only on small screens */}
+                <div className="block sm:hidden divide-y divide-border/40">
+                  {rooms.map((room, index) => (
+                    <div
+                      key={room.id.toString()}
+                      data-ocid={`admin.rooms_card.${index + 1}`}
+                      className="p-3 bg-card"
+                    >
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          title="Preview video"
+                          onClick={() => setPreviewingRoom(room)}
+                          className="group relative h-14 w-24 shrink-0 overflow-hidden rounded bg-muted"
+                        >
+                          {room.thumbnailUrl ? (
+                            <img
+                              src={room.thumbnailUrl}
+                              alt={room.title}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <Tv2
+                                size={16}
+                                className="text-muted-foreground/30"
+                              />
+                            </div>
+                          )}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+                            <Eye size={14} className="text-white" />
+                          </div>
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-foreground text-sm truncate">
+                            {room.title}
+                          </p>
+                          {room.price && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 border-cinema-red/30 text-cinema-red text-xs"
+                            >
+                              {room.price}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <Button
+                          data-ocid={`admin.rooms.move_top_button.${index + 1}`}
+                          variant="outline"
+                          size="sm"
+                          title="Move to top"
+                          disabled={
+                            moveToTop.isPending &&
+                            moveToTop.variables === room.id
+                          }
+                          onClick={() => moveToTop.mutate(room.id)}
+                          className="flex-1 h-9 gap-1.5 text-xs"
+                        >
+                          {moveToTop.isPending &&
+                          moveToTop.variables === room.id ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <ArrowUp size={13} />
+                          )}
+                          Top
+                        </Button>
+                        <Button
+                          data-ocid={`admin.edit_button.${index + 1}`}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingRoom(room)}
+                          className="flex-1 h-9 gap-1.5 text-xs"
+                        >
+                          <Pencil size={13} />
+                          Edit
+                        </Button>
+                        <Button
+                          data-ocid={`admin.delete_button.${index + 1}`}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeletingRoom(room)}
+                          className="flex-1 h-9 gap-1.5 text-xs text-cinema-red hover:text-cinema-red border-cinema-red/20 hover:border-cinema-red/40 hover:bg-cinema-red/5"
+                        >
+                          <Trash2 size={13} />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             )}
           </TabsContent>
@@ -543,7 +671,7 @@ export function AdminDashboard() {
                 data-ocid="admin.submissions_table"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="overflow-hidden rounded-lg border border-border/60"
+                className="overflow-x-auto rounded-lg border border-border/60"
               >
                 <Table>
                   <TableHeader>
@@ -650,7 +778,7 @@ export function AdminDashboard() {
                         </TableCell>
                         <TableCell>
                           {sub.status === "Pending" ? (
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               {/* NEW: standalone preview button for mobile (no thumbnail column) */}
                               <Button
                                 data-ocid={`admin.submission_preview_icon_button.${index + 1}`}
@@ -916,10 +1044,120 @@ export function AdminDashboard() {
 
       {/* Edit room form */}
       <RoomForm
+        key={editingRoom ? String(editingRoom.id) : "edit"}
         room={editingRoom}
         open={!!editingRoom}
         onClose={() => setEditingRoom(null)}
       />
+
+      {/* ── Room Preview Modal ── */}
+      <Dialog
+        open={!!previewingRoom}
+        onOpenChange={(open) => {
+          if (!open) setPreviewingRoom(null);
+        }}
+      >
+        <DialogContent className="border-border bg-card sm:max-w-2xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pr-12 pt-5 pb-0">
+            <DialogTitle className="font-display text-foreground">
+              Room Preview
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="px-6 pb-6 pt-4 space-y-4 max-h-[80vh] overflow-y-auto">
+            {/* Video player */}
+            <div className="w-full overflow-hidden rounded-lg bg-black aspect-video">
+              {previewingRoom?.videoUrl ? (
+                // biome-ignore lint/a11y/useMediaCaption: user-uploaded content; captions not available
+                <video
+                  src={previewingRoom.videoUrl}
+                  controls
+                  className="w-full h-full"
+                  preload="metadata"
+                  playsInline
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground/40 gap-2">
+                  <Film size={24} strokeWidth={1.5} />
+                  <span className="text-sm">No video uploaded</span>
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnail + meta */}
+            <div className="flex gap-4">
+              <div className="hidden sm:block h-24 w-40 shrink-0 overflow-hidden rounded-md bg-muted">
+                {previewingRoom?.thumbnailUrl ? (
+                  <img
+                    src={previewingRoom.thumbnailUrl}
+                    alt={previewingRoom.title}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Film size={20} className="text-muted-foreground/30" />
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <h3 className="font-display font-semibold text-foreground text-lg leading-tight">
+                  {previewingRoom?.title}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  by{" "}
+                  <span className="text-foreground/80 font-medium">
+                    {previewingRoom?.creatorName}
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  <Badge
+                    variant="outline"
+                    className="border-border/60 text-muted-foreground text-xs"
+                  >
+                    {previewingRoom?.category}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-cinema-red/30 text-cinema-red text-xs"
+                  >
+                    {previewingRoom?.price} ICP
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-border/60 text-muted-foreground text-xs"
+                  >
+                    {previewingRoom?.viewDuration ?? ""}
+                    access
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            {previewingRoom?.description && (
+              <div className="rounded-md border border-border/50 bg-muted/20 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Description
+                </p>
+                <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                  {previewingRoom.description}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border/50 bg-muted/10">
+            <Button
+              data-ocid="admin.room_preview_close_button"
+              variant="outline"
+              onClick={() => setPreviewingRoom(null)}
+              className="border-border/60"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── NEW: Content Preview Modal ── */}
       <Dialog
@@ -929,7 +1167,7 @@ export function AdminDashboard() {
         }}
       >
         <DialogContent className="border-border bg-card sm:max-w-2xl p-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-5 pb-0">
+          <DialogHeader className="px-6 pr-12 pt-5 pb-0">
             <DialogTitle className="font-display text-foreground">
               Content Preview
             </DialogTitle>
@@ -1115,14 +1353,14 @@ export function AdminDashboard() {
           }
         }}
       >
-        <DialogContent className="border-border bg-card sm:max-w-lg">
+        <DialogContent className="border-border bg-card sm:max-w-lg flex flex-col max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="font-display text-foreground">
               Approve Submission
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-1">
+          <div className="space-y-4 py-1 overflow-y-auto flex-1 pr-1">
             {/* NEW: thumbnail + video preview strip inside approve modal */}
             {(approvingSubmission?.thumbnailUrl ||
               approvingSubmission?.videoUrl) && (

@@ -19,6 +19,12 @@ export const _CaffeineStorageRefillResult = IDL.Record({
   'success' : IDL.Opt(IDL.Bool),
   'topped_up_amount' : IDL.Opt(IDL.Nat),
 });
+export const HomepageScript = IDL.Record({
+  'id' : IDL.Nat,
+  'scriptContent' : IDL.Text,
+  'order' : IDL.Nat,
+  'name' : IDL.Text,
+});
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
   'user' : IDL.Null,
@@ -40,11 +46,12 @@ export const Room = IDL.Record({
   'videoUrl' : IDL.Text,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
-export const VideoSubmission = IDL.Record({
+export const VideoSubmissionFull = IDL.Record({
   'id' : IDL.Nat,
   'viewDuration' : IDL.Text,
   'status' : IDL.Text,
   'title' : IDL.Text,
+  'denialReason' : IDL.Text,
   'thumbnailUrl' : IDL.Text,
   'submitterPrincipal' : IDL.Principal,
   'createdAt' : Time,
@@ -54,15 +61,8 @@ export const VideoSubmission = IDL.Record({
   'category' : IDL.Text,
   'price' : IDL.Text,
   'videoUrl' : IDL.Text,
-  'denialReason' : IDL.Text,
 });
 
-export const HomepageScript = IDL.Record({
-  'id' : IDL.Nat,
-  'name' : IDL.Text,
-  'scriptContent' : IDL.Text,
-  'order' : IDL.Nat,
-});
 export const idlService = IDL.Service({
   '_caffeineStorageBlobIsLive' : IDL.Func(
       [IDL.Vec(IDL.Nat8)],
@@ -91,7 +91,9 @@ export const idlService = IDL.Service({
     ),
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'addHomepageScript' : IDL.Func([IDL.Text, IDL.Text], [HomepageScript], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'bootstrapAdminIfNeeded' : IDL.Func([], [IDL.Bool], []),
   'claimHardcodedAdmin' : IDL.Func([], [IDL.Bool], []),
   'createRoom' : IDL.Func(
       [
@@ -112,7 +114,12 @@ export const idlService = IDL.Service({
   'deleteRoom' : IDL.Func([IDL.Nat], [IDL.Bool], []),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
-  'getPendingSubmissions' : IDL.Func([], [IDL.Vec(VideoSubmission)], ['query']),
+  'getHomepageScripts' : IDL.Func([], [IDL.Vec(HomepageScript)], ['query']),
+  'getPendingSubmissions' : IDL.Func(
+      [],
+      [IDL.Vec(VideoSubmissionFull)],
+      ['query'],
+    ),
   'getRoomById' : IDL.Func([IDL.Nat], [IDL.Opt(Room)], ['query']),
   'getRoomBySlug' : IDL.Func([IDL.Text], [IDL.Opt(Room)], ['query']),
   'getRooms' : IDL.Func([], [IDL.Vec(Room)], ['query']),
@@ -121,19 +128,21 @@ export const idlService = IDL.Service({
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
-  'getUserSubmissions' : IDL.Func([], [IDL.Vec(VideoSubmission)], ['query']),
+  'getUserSubmissions' : IDL.Func(
+      [],
+      [IDL.Vec(VideoSubmissionFull)],
+      ['query'],
+    ),
   'hasAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'isAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
-  'addHomepageScript' : IDL.Func([IDL.Text, IDL.Text], [HomepageScript], []),
-    'getHomepageScripts' : IDL.Func([], [IDL.Vec(HomepageScript)], ['query']),
-    'updateHomepageScript' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [HomepageScript], []),
-    'removeHomepageScript' : IDL.Func([IDL.Nat], [IDL.Bool], []),
-    'reorderHomepageScripts' : IDL.Func([IDL.Vec(IDL.Nat)], [], []),
-    'resetAdmin' : IDL.Func([], [], []),
+  'moveRoomToTop' : IDL.Func([IDL.Nat], [IDL.Bool], []),
+  'removeHomepageScript' : IDL.Func([IDL.Nat], [IDL.Bool], []),
+  'reorderHomepageScripts' : IDL.Func([IDL.Vec(IDL.Nat)], [], []),
+  'resetAdmin' : IDL.Func([], [], []),
   'reviewSubmission' : IDL.Func(
       [IDL.Nat, IDL.Bool, IDL.Text, IDL.Text],
-      [VideoSubmission],
+      [VideoSubmissionFull],
       [],
     ),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
@@ -149,7 +158,12 @@ export const idlService = IDL.Service({
         IDL.Text,
         IDL.Text,
       ],
-      [VideoSubmission],
+      [VideoSubmissionFull],
+      [],
+    ),
+  'updateHomepageScript' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text],
+      [HomepageScript],
       [],
     ),
   'updateRoom' : IDL.Func(
@@ -185,6 +199,12 @@ export const idlFactory = ({ IDL }) => {
     'success' : IDL.Opt(IDL.Bool),
     'topped_up_amount' : IDL.Opt(IDL.Nat),
   });
+  const HomepageScript = IDL.Record({
+    'id' : IDL.Nat,
+    'scriptContent' : IDL.Text,
+    'order' : IDL.Nat,
+    'name' : IDL.Text,
+  });
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
     'user' : IDL.Null,
@@ -206,11 +226,12 @@ export const idlFactory = ({ IDL }) => {
     'videoUrl' : IDL.Text,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
-  const VideoSubmission = IDL.Record({
+  const VideoSubmissionFull = IDL.Record({
     'id' : IDL.Nat,
     'viewDuration' : IDL.Text,
     'status' : IDL.Text,
     'title' : IDL.Text,
+    'denialReason' : IDL.Text,
     'thumbnailUrl' : IDL.Text,
     'submitterPrincipal' : IDL.Principal,
     'createdAt' : Time,
@@ -220,15 +241,8 @@ export const idlFactory = ({ IDL }) => {
     'category' : IDL.Text,
     'price' : IDL.Text,
     'videoUrl' : IDL.Text,
-    'denialReason' : IDL.Text,
   });
   
-  const HomepageScript = IDL.Record({
-    'id' : IDL.Nat,
-    'name' : IDL.Text,
-    'scriptContent' : IDL.Text,
-    'order' : IDL.Nat,
-  });
   return IDL.Service({
     '_caffeineStorageBlobIsLive' : IDL.Func(
         [IDL.Vec(IDL.Nat8)],
@@ -257,7 +271,9 @@ export const idlFactory = ({ IDL }) => {
       ),
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'addHomepageScript' : IDL.Func([IDL.Text, IDL.Text], [HomepageScript], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'bootstrapAdminIfNeeded' : IDL.Func([], [IDL.Bool], []),
     'claimHardcodedAdmin' : IDL.Func([], [IDL.Bool], []),
     'createRoom' : IDL.Func(
         [
@@ -278,9 +294,10 @@ export const idlFactory = ({ IDL }) => {
     'deleteRoom' : IDL.Func([IDL.Nat], [IDL.Bool], []),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getHomepageScripts' : IDL.Func([], [IDL.Vec(HomepageScript)], ['query']),
     'getPendingSubmissions' : IDL.Func(
         [],
-        [IDL.Vec(VideoSubmission)],
+        [IDL.Vec(VideoSubmissionFull)],
         ['query'],
       ),
     'getRoomById' : IDL.Func([IDL.Nat], [IDL.Opt(Room)], ['query']),
@@ -291,19 +308,21 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(UserProfile)],
         ['query'],
       ),
-    'getUserSubmissions' : IDL.Func([], [IDL.Vec(VideoSubmission)], ['query']),
+    'getUserSubmissions' : IDL.Func(
+        [],
+        [IDL.Vec(VideoSubmissionFull)],
+        ['query'],
+      ),
     'hasAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'isAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
-    'addHomepageScript' : IDL.Func([IDL.Text, IDL.Text], [HomepageScript], []),
-    'getHomepageScripts' : IDL.Func([], [IDL.Vec(HomepageScript)], ['query']),
-    'updateHomepageScript' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [HomepageScript], []),
+    'moveRoomToTop' : IDL.Func([IDL.Nat], [IDL.Bool], []),
     'removeHomepageScript' : IDL.Func([IDL.Nat], [IDL.Bool], []),
     'reorderHomepageScripts' : IDL.Func([IDL.Vec(IDL.Nat)], [], []),
     'resetAdmin' : IDL.Func([], [], []),
     'reviewSubmission' : IDL.Func(
         [IDL.Nat, IDL.Bool, IDL.Text, IDL.Text],
-        [VideoSubmission],
+        [VideoSubmissionFull],
         [],
       ),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
@@ -319,7 +338,12 @@ export const idlFactory = ({ IDL }) => {
           IDL.Text,
           IDL.Text,
         ],
-        [VideoSubmission],
+        [VideoSubmissionFull],
+        [],
+      ),
+    'updateHomepageScript' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text],
+        [HomepageScript],
         [],
       ),
     'updateRoom' : IDL.Func(
